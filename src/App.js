@@ -1,4 +1,4 @@
-import React, {useState, useRef, useMemo, useCallback} from 'react'
+import React, { useRef, useMemo, useCallback, useReducer } from 'react'
 // import Hello from './Hello'
 // import Wrapper from './Wrapper'
 // import './App.css'
@@ -6,7 +6,10 @@ import React, {useState, useRef, useMemo, useCallback} from 'react'
 // import InputSampleTutorial from './InputSampleTutorial'
 // import InputSample from './InputSample'
 import UserList from './UserList'
-import CreateUser from './CreateUser';
+import CreateUser from './CreateUser'
+// import Counter from './Counter'
+import useInputs from './hooks/useInputs'
+import produce from 'immer'
 
 // #### React 맛보기 (1) ####
 // function App() {
@@ -44,13 +47,17 @@ import CreateUser from './CreateUser';
 // }
 
 // #### React 맛보기 (3) ####
-function countActiveUsers(users){
+function countActiveUsers(users) {
   console.log('활성 사용자 수를 세는 중...');
-  return users.filter(user=>user.active).length;
+  return users.filter(user => user.active).length;
 }
 
-function App(){
-  const [users, setUsers] = useState([
+const initialState = {
+  inputs: {
+    username: '',
+    email: ''
+  },
+  users: [
     {
       id: 1,
       username: 'velopert',
@@ -69,61 +76,109 @@ function App(){
       email: 'liz@example.com',
       active: false
     }
-  ]);
+  ]
+}
 
-  const [inputs, setInputs] = useState({
+function reducer(state, action) {
+  switch (action.type) {
+    case 'CREATE_USER':
+      // return {
+      //   ...state,
+      //   users: state.users.concat(action.user)
+      // };
+
+      // immer 를 사용할 지 여부는 선택사항.
+      return produce(state, draft => {
+        draft.users.push(action.user);
+      });
+
+      // produce가 (state, draft=>{}) 2개의 인자를 받을 경우 "2번째 함수 내에서 변경된 state 값"을 반환함
+      // produce가 (draft=>{}) 1개의 인자를 받을 경우, "state를 변경하는 함수(=함수형 업데이트)"를 반환함 (state를 return할 필요는 없음)
+      // 이를 이용하여 setSomething(produce(draft()=>{}))와 같이 구현 가능
+
+    case 'TOGGLE_USER':
+      // return {
+      //   ...state,
+      //   users: state.users.map(
+      //     user => user.id === action.id ? { ...user, active: !user.active } : user
+      //   )
+      // }
+      
+      return produce(state, draft => {
+        const user = draft.users.find(user=>user.id===action.id);
+        user.active = !user.active;
+      });
+    case 'REMOVE_USER':
+      // return {
+      //   ...state,
+      //   users: state.users.filter(user => user.id !== action.id)
+      // };
+
+      return produce(state, draft => {
+        const index = draft.users.findIndex(user=>user.id===action.id);
+        draft.users.splice(index, 1)
+      });
+    default:
+      return state;
+  }
+}
+
+export const UserDispatch = React.createContext(null);
+
+function App() {
+  const [state, dispatch] = useReducer(reducer, initialState);
+
+  const { users } = state;
+  // const { username, email } = state.inputs;
+
+  const nextId = useRef(4);
+
+  // const onChange = useCallback((e) => {
+  //   const { name, value } = e.target;
+  //   dispatch({
+  //     type: 'CHANGE_INPUT',
+  //     name,
+  //     value
+  //   });
+  // }, []);
+
+  const [{ username, email }, onChange, reset] = useInputs({
     username: '',
     email: ''
   });
 
-  const {username, email} = inputs;
-
-  const onChange = useCallback((e) => {
-    const {name, value} = e.target;
-    setInputs({
-      ...inputs,
-      [name]: value
+  const onCreate = useCallback(() => {
+    dispatch({
+      type: 'CREATE_USER',
+      user: {
+        id: nextId.current,
+        username: username,
+        email: email,
+        active: false
+      }
     });
-  }, [inputs]); // useMemo를 간단하게 쓰는 것, deps에 있는 변수가 바뀔 때에만 함수 호출
-
-  const nextId = useRef(4); 
-
-  const onCreate = () => {
-    const newUser = {
-      id: nextId.current,
-      username: username,
-      email: email,
-      active: false
-    };
-    setUsers([
-      ...users,
-      newUser
-    ])
-    setInputs({
-      username: '',
-      email: ''
-    })
     nextId.current += 1;
-  };
+    reset();
+  }, [username, email, reset]);
 
-  const onRemove = id => {
-    setUsers(users.filter((user)=>(user.id!==id)));
-  }
+  // Context API(UserDispatch)와 이를 참조하는 userContext를 이용하여 User 컴포넌트에서 직접 dispatch 호출
 
-  const onToggle = id => {
-    setUsers(
-      users.map((user)=>({...user, active:id===user.id?!user.active:user.active}))
-    ); // 위 부분에서 user 하나만 변경하더라도 전체를 순회하면서 user를 업데이트 하므로, onToggle 시에 useEffect가 모든 user에 대해서 실행된다!
-  }
+  // const onToggle = useCallback((id) => {
+  //   dispatch({ type: 'TOGGLE_USER', id });
+  // }, []);
 
-  const count = useMemo(()=>countActiveUsers(users), [users]);
+  // const onRemove = useCallback((id) => {
+  //   dispatch({ type: 'REMOVE_USER', id });
+  // }, []);
 
-  return(
-    <>
-      <CreateUser username={username} email={email} onChange={onChange} onCreate={onCreate}/>
-      <UserList users={users} onRemove={onRemove} onToggle={onToggle}/>
+  const count = useMemo(() => countActiveUsers(users), [users]);
+
+  return (
+    <UserDispatch.Provider value={dispatch}>
+      <CreateUser username={username} email={email} onChange={onChange} onCreate={onCreate} />
+      <UserList users={users} />
       <div>활성 사용자 수 : {count}</div>
-    </>
+    </UserDispatch.Provider>
   )
 }
 
