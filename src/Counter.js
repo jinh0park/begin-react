@@ -35,6 +35,7 @@ class Counter extends Component {
         console.log('dec');
         console.log(this);
         this.setState(state=>({...state, counter:state.counter-1}), ()=>{console.log('this is a callback')});
+        // setState의 두번째 인자에 callback function 전달 가능
     }
 
     // constructor를 이용해 bind하거나,
